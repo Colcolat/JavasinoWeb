@@ -1,0 +1,14 @@
+# PostgreSQL - Local Dev
+spring.datasource.url=jdbc:postgresql://localhost:5432/casino_dev
+spring.datasource.username=dev_user
+spring.datasource.password=dev_password
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# JPA/Hibernate
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# Logging
+logging.level.root=INFO
+logging.level.org.springframework.web=DEBUG
