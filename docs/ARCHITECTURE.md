@@ -1,253 +1,171 @@
-# Entity Diagram & Data Model
+# System Architecture
 
-This document defines all database entities, their attributes, relationships, and implementation phases.
-
----
-
-## Non-database classes (shared/model/)
-
-These are pure Java classes — they are **not persisted** in the database. They exist to encapsulate reusable game logic.
-
-| Class | Location | Responsibility |
-|-------|----------|----------------|
-| `Card` | `shared/model/Card.java` | Represents a single card: suit (♠♥♦♣) and value (A, 2...K) |
-| `Deck` | `shared/model/Deck.java` | Holds 52 cards, handles shuffling and dealing |
-
-**Why separate?** Single Responsibility Principle — `Card` knows what it *is*, `Deck` knows what to *do* with cards. Both are reused by Blackjack and Poker without duplication.
+This document describes the overall architecture of JavasinoWeb, including package structure, layer responsibilities, design decisions, and technology stack.
 
 ---
 
-## Core entities
+## Overview
 
-### USER
-Central entity. Every player must be registered.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `username` | String | Unique |
-| `email` | String | Unique, used for login |
-| `password` | String | Stored hashed (BCrypt) |
-| `role` | Enum | `PLAYER`, `ADMIN` |
+JavasinoWeb is a monolithic Spring Boot REST API backed by PostgreSQL. The architecture is designed to be clean, modular, and easy to evolve — with each business domain organized as a self-contained feature module.
 
 ---
 
-### WALLET
-One wallet per user. Tracks current balance.
+## Package structure
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `balance` | Long | Integer credits (no decimals) |
-| `user_id` | UUID | FK → USER (1:1) |
-
-**Why Long?** Casino credits are large integers — no decimal precision needed.
-
----
-
-### TRANSACTION
-Every credit movement is recorded here for full audit history.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `amount` | Long | Amount moved |
-| `type` | Enum | `DEPOSIT`, `WITHDRAWAL`, `BET`, `WIN` |
-| `game_type` | Enum | `BLACKJACK`, `ROULETTE`, `BINGO`, `HORSES`, `POKER`, `NONE` |
-| `created_at` | Timestamp | When it happened |
-| `wallet_id` | UUID | FK → WALLET |
-
-**Design note:** Win/loss counters are not stored on USER — they are derived from TRANSACTION records to avoid data inconsistency.
-
----
-
-## Game session entities
-
-### GAME_SESSION (generic)
-Shared session entity used by Blackjack. Stores the high-level result of any game round.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | FK → USER |
-| `game_type` | Enum | Which game was played |
-| `bet_amount` | Long | How much was wagered |
-| `result` | Enum | `WIN`, `LOSS`, `DRAW` |
-| `created_at` | Timestamp | When the session occurred |
+```
+colcolat.javasinoweb
+│
+├── shared/
+│   ├── config/              Spring Security, CORS, datasource config
+│   ├── exceptions/          Global exception handler (@ControllerAdvice)
+│   └── model/               Reusable non-entity classes (Card, Deck)
+│
+├── user/
+│   ├── controller/          UserController — REST endpoints
+│   ├── dto/                 UserDTO, RegisterRequest, LoginRequest
+│   ├── model/               User entity
+│   ├── repository/          UserRepository (JPA)
+│   └── service/             UserService — business logic
+│
+├── wallet/
+│   ├── controller/          WalletController
+│   ├── dto/                 WalletDTO, TransactionDTO
+│   ├── model/               Wallet, Transaction entities
+│   ├── repository/          WalletRepository, TransactionRepository
+│   └── service/             WalletService
+│
+└── games/
+    ├── blackjack/
+    │   ├── controller/      BlackjackController
+    │   ├── dto/             BlackjackSessionDTO
+    │   ├── model/           GameSession, BlackjackSession entities
+    │   ├── repository/      GameSessionRepository, BlackjackSessionRepository
+    │   └── service/         BlackjackService
+    ├── roulette/
+    │   └── ...              Same structure
+    ├── bingo/
+    │   └── ...              Same structure
+    ├── horses/
+    │   └── ...              Same structure
+    └── poker/
+        └── ...              Same structure (last phase)
+```
 
 ---
 
-### BLACKJACK_SESSION
-Stores the card detail of a Blackjack round. Extends GAME_SESSION.
+## Architecture pattern: Package by Feature
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `player_cards` | String | Serialized (e.g. `"AS,KH,7D"`) |
-| `dealer_cards` | String | Serialized |
-| `player_score` | Int | Final hand value |
-| `dealer_score` | Int | Final hand value |
-| `session_id` | UUID | FK → GAME_SESSION |
+The project uses **Package by Feature** instead of the conventional Package by Layer.
 
----
+| Package by Layer | Package by Feature (chosen) |
+|------------------|-----------------------------|
+| All controllers together | Each feature owns its controller |
+| All services together | Each feature owns its service |
+| Hard to see what a module does | A module is self-contained and readable |
+| Doesn't scale with team size | Each module can be owned by a different developer |
 
-### ROULETTE_SESSION
-Stores the result of one roulette spin.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | FK → USER |
-| `winning_number` | Int | 0–36 |
-| `result` | Enum | `WIN`, `LOSS` |
-| `payout` | Long | Total credits won or lost |
-| `created_at` | Timestamp | |
+Inside each feature module, the classic layered pattern is preserved: `controller → service → repository → model`.
 
 ---
 
-### ROULETTE_BET
-One or more bets placed per roulette spin. A player can bet on multiple outcomes in a single round.
+## Layer responsibilities
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `bet_type` | Enum | `NUMBER`, `COLOR`, `EVEN_ODD`, `DOZEN` |
-| `bet_value` | String | e.g. `"17"`, `"RED"`, `"EVEN"` |
-| `amount` | Long | Amount placed on this bet |
-| `session_id` | UUID | FK → ROULETTE_SESSION |
+### Controller
+- Receives HTTP requests
+- Validates input (via `@Valid`)
+- Delegates to the service layer
+- Returns HTTP responses with appropriate status codes
+- Never contains business logic
 
-**Why separate from ROULETTE_SESSION?** A player can place multiple simultaneous bets per spin. Storing them as a list requires a separate entity.
+### Service
+- Contains all business logic
+- Orchestrates calls between repositories
+- Integrates with WalletService for credit operations
+- Throws custom exceptions handled globally
 
----
+### Repository
+- Extends `JpaRepository`
+- Data access only — no logic
+- Custom queries via `@Query` when needed
 
-### BINGO_SESSION
-Stores one Bingo game (player vs machine).
+### Model (Entity)
+- JPA entities mapped to PostgreSQL tables
+- Annotated with `@Entity`, `@Table`, etc.
+- No business logic in entities
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | FK → USER |
-| `drawn_numbers` | String | Numbers revealed during the game (serialized) |
-| `bet_amount` | Long | Entry wager |
-| `result` | Enum | `WIN`, `LOSS` |
-| `payout` | Long | Credits won or lost |
-| `created_at` | Timestamp | |
-
----
-
-### BINGO_CARD
-The player's card for a Bingo session.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `numbers` | String | 25 numbers serialized (e.g. `"5,12,23,44,61..."`) |
-| `user_id` | UUID | FK → USER |
-| `session_id` | UUID | FK → BINGO_SESSION |
-
-**Game mode:** Single player vs machine (Option A). Machine draws numbers until the player completes their card or a draw limit is reached.
+### DTO (Data Transfer Object)
+- Separates the API contract from the internal entity model
+- Prevents accidental exposure of sensitive fields (e.g. password)
+- Separate DTOs for request (input) and response (output)
 
 ---
 
-### HORSE
-Represents a horse available in races. Static catalog — not generated per session.
+## Technology stack
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `name` | String | e.g. `"Thunder"`, `"Shadow"` |
-| `odds` | Float | Probability — affects payout calculation |
-
----
-
-### HORSE_RACE_SESSION
-Stores the result of one race.
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | FK → USER |
-| `first_place` | UUID | FK → HORSE |
-| `second_place` | UUID | FK → HORSE |
-| `third_place` | UUID | FK → HORSE |
-| `result` | Enum | `WIN`, `LOSS` |
-| `payout` | Long | |
-| `created_at` | Timestamp | |
+| Layer | Technology | Reason |
+|-------|-----------|--------|
+| Language | Java 21 | LTS version, modern features (Records, Pattern Matching, Streams) |
+| Framework | Spring Boot | Industry standard for enterprise Java backends |
+| API | Spring Web (MVC) | REST API with `@RestController` |
+| Security | Spring Security + JWT | Stateless authentication |
+| ORM | Spring Data JPA / Hibernate | Clean data access with PostgreSQL |
+| Database | PostgreSQL | University stack + best AWS RDS support |
+| Testing | JUnit 5 + Mockito | Unit and integration tests |
+| Build | Gradle | Dependency management and builds |
+| Documentation | OpenAPI / Swagger | Auto-generated API docs |
 
 ---
 
-### HORSE_RACE_BET
-One or more bets placed per race. Supports WIN / PLACE / SHOW bet types.
+## Environment configuration
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `horse_id` | UUID | FK → HORSE |
-| `amount` | Long | Amount wagered |
-| `bet_type` | Enum | `WIN` (1st), `PLACE` (top 2), `SHOW` (top 3) |
-| `session_id` | UUID | FK → HORSE_RACE_SESSION |
+Spring Profiles are used to separate local development from production:
 
----
+| File | Committed | Purpose |
+|------|-----------|---------|
+| `application.properties` | Yes | Shared base config |
+| `application-dev.properties` | No (.gitignore) | Local PostgreSQL, verbose logging, `create-drop` DDL |
+| `application-prod.properties` | No (.gitignore) | Environment variables only, `validate` DDL, minimal logging |
+| `application-dev.properties.example` | Yes | Template for new developers |
 
-### POKER_SESSION
-Stores one Texas Hold'em hand (player vs dealer).
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `user_id` | UUID | FK → USER |
-| `hand_id` | UUID | FK → POKER_HAND |
-| `initial_bet` | Long | Opening wager |
-| `total_pot` | Long | Total accumulated across betting rounds |
-| `result` | Enum | `WIN`, `LOSS`, `FOLD` |
-| `payout` | Long | |
-| `created_at` | Timestamp | |
+**Credentials are never committed to Git.** Production credentials are passed as environment variables (`DB_URL`, `DB_USER`, `DB_PASSWORD`).
 
 ---
 
-### POKER_HAND
-Stores the card detail of a Poker hand.
+## Request lifecycle
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID | Primary key |
-| `player_cards` | String | 2 hole cards (serialized) |
-| `dealer_cards` | String | 2 dealer cards (serialized) |
-| `community_cards` | String | 5 community cards — flop, turn, river (serialized) |
-| `player_hand_rank` | Enum | `PAIR`, `TWO_PAIR`, `FLUSH`, `FULL_HOUSE`, etc. |
-| `dealer_hand_rank` | Enum | Same enum |
-
-**Why separate from POKER_SESSION?** Single Responsibility — POKER_SESSION manages money and flow, POKER_HAND manages cards and combinations.
-
----
-
-## Relationships summary
-
-| Relationship | Cardinality |
-|-------------|-------------|
-| USER → WALLET | 1:1 |
-| WALLET → TRANSACTION | 1:N |
-| USER → GAME_SESSION | 1:N |
-| GAME_SESSION → BLACKJACK_SESSION | 1:0..1 |
-| USER → ROULETTE_SESSION | 1:N |
-| ROULETTE_SESSION → ROULETTE_BET | 1:N |
-| USER → BINGO_SESSION | 1:N |
-| BINGO_SESSION → BINGO_CARD | 1:1 |
-| USER → HORSE_RACE_SESSION | 1:N |
-| HORSE_RACE_SESSION → HORSE_RACE_BET | 1:N |
-| HORSE_RACE_BET → HORSE | N:1 |
-| USER → POKER_SESSION | 1:N |
-| POKER_SESSION → POKER_HAND | 1:1 |
+```
+HTTP Request
+    │
+    ▼
+@RestController (input validation)
+    │
+    ▼
+@Service (business logic + wallet integration)
+    │
+    ▼
+@Repository (data access via JPA)
+    │
+    ▼
+PostgreSQL
+    │
+    ▼
+HTTP Response (DTO)
+```
 
 ---
 
-## Implementation phases
+## Shared components
 
-| Phase | Entities |
-|-------|---------|
-| Phase 2 — Core | USER, WALLET, TRANSACTION |
-| Phase 3a — Blackjack | GAME_SESSION, BLACKJACK_SESSION |
-| Phase 3b — Roulette | ROULETTE_SESSION, ROULETTE_BET |
-| Phase 3c — Bingo | BINGO_SESSION, BINGO_CARD |
-| Phase 3d — Horse Racing | HORSE, HORSE_RACE_SESSION, HORSE_RACE_BET |
-| Phase 3e — Poker | POKER_SESSION, POKER_HAND |
+### GlobalExceptionHandler (`shared/exceptions/`)
+A single `@ControllerAdvice` class catches all custom exceptions thrown by any service and returns consistent JSON error responses. No try/catch blocks in controllers.
+
+### Card & Deck (`shared/model/`)
+Reusable Java classes (not JPA entities) used by Blackjack and Poker. Encapsulate card representation and deck shuffling logic. Not persisted — instantiated in memory per game session.
+
+---
+
+## Future considerations
+
+- **AWS deployment:** The current architecture (Package by Feature, Spring Profiles, PostgreSQL) is designed to migrate cleanly to AWS (EC2 + RDS) with only configuration changes — no structural refactoring needed.
+- **Microservices:** Each feature module is self-contained and could be extracted into its own service if the project ever needs to scale horizontally. This is not planned, but the structure does not prevent it.
+- **Docker:** Containerization is planned for the deployment phase to standardize the runtime environment between dev and prod.
