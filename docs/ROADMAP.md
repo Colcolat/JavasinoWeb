@@ -14,8 +14,8 @@ This document outlines the planned phases of the JavasinoWeb project, from initi
 - [x] Set up `.gitignore` for sensitive files
 - [x] Initialize GitHub repository with clean first commit
 - [x] Create `/docs` structure with Markdown documentation
-- [ ] Define entity diagram (User, Wallet, Game, Transaction, etc.)
-- [ ] Define REST API contract (endpoints per module)
+- [x] Define entity diagram (User, Wallet, Game, Transaction, etc.)
+- [x] Define REST API contract (endpoints per module)
 - [ ] Define game logic rules for each game
 
 ---
