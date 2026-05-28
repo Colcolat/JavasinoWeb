@@ -1,0 +1,340 @@
+# API Contract
+
+This document defines all REST API endpoints exposed by JavasinoWeb. All endpoints are prefixed with `/api/v1/`.
+
+---
+
+## Authentication & Users
+
+### Auth
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/v1/auth/register` | No | Register a new user |
+| `POST` | `/api/v1/auth/login` | No | Login, returns JWT token |
+
+**POST /auth/register — Request body:**
+```json
+{
+  "username": "johndoe",
+  "email": "john@example.com",
+  "password": "securepassword"
+}
+```
+
+**POST /auth/login — Request body:**
+```json
+{
+  "email": "john@example.com",
+  "password": "securepassword"
+}
+```
+
+**POST /auth/login — Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "username": "johndoe"
+}
+```
+
+---
+
+### Users
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/api/v1/users/me` | Yes | Get authenticated user profile |
+| `PUT` | `/api/v1/users/me` | Yes | Update user profile |
+
+---
+
+## Wallet
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/api/v1/wallet/me` | Yes | Get current balance |
+| `POST` | `/api/v1/wallet/deposit` | Yes | Deposit credits |
+| `POST` | `/api/v1/wallet/withdraw` | Yes | Withdraw credits |
+| `GET` | `/api/v1/wallet/transactions` | Yes | Paginated transaction history |
+| `GET` | `/api/v1/wallet/transactions/{gameType}` | Yes | Paginated history filtered by game |
+
+**POST /wallet/deposit — Request body:**
+```json
+{
+  "amount": 500
+}
+```
+
+**GET /wallet/transactions — Response:**
+```json
+{
+  "content": [
+    {
+      "id": "uuid",
+      "amount": 500,
+      "type": "DEPOSIT",
+      "gameType": "NONE",
+      "createdAt": "2026-05-23T10:00:00Z"
+    }
+  ],
+  "page": 0,
+  "totalPages": 5,
+  "totalElements": 98
+}
+```
+
+---
+
+## Games
+
+### Blackjack
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/v1/games/blackjack/start` | Yes | Start session, deal initial cards |
+| `POST` | `/api/v1/games/blackjack/hit` | Yes | Player requests a card |
+| `POST` | `/api/v1/games/blackjack/stand` | Yes | Player stands, dealer plays |
+| `POST` | `/api/v1/games/blackjack/double` | Yes | Double bet, receive one final card |
+| `GET` | `/api/v1/games/blackjack/history` | Yes | Paginated session history |
+
+**POST /blackjack/start — Request body:**
+```json
+{
+  "betAmount": 100
+}
+```
+
+**POST /blackjack/start — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "playerCards": ["AS", "KH"],
+  "dealerCards": ["7D", "?"],
+  "playerScore": 21,
+  "status": "IN_PROGRESS"
+}
+```
+
+**POST /blackjack/hit — Request body:**
+```json
+{
+  "sessionId": "uuid"
+}
+```
+
+**POST /blackjack/stand — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "playerCards": ["AS", "KH"],
+  "dealerCards": ["7D", "9C"],
+  "playerScore": 21,
+  "dealerScore": 16,
+  "result": "WIN",
+  "payout": 200,
+  "status": "FINISHED"
+}
+```
+
+---
+
+### Roulette
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/v1/games/roulette/spin` | Yes | Place bets and spin |
+| `GET` | `/api/v1/games/roulette/history` | Yes | Paginated session history |
+
+**POST /roulette/spin — Request body:**
+```json
+{
+  "bets": [
+    { "betType": "COLOR", "betValue": "RED", "amount": 100 },
+    { "betType": "NUMBER", "betValue": "17", "amount": 50 }
+  ]
+}
+```
+
+**POST /roulette/spin — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "winningNumber": 17,
+  "result": "WIN",
+  "payout": 1850,
+  "status": "FINISHED"
+}
+```
+
+---
+
+### Bingo
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/v1/games/bingo/start` | Yes | Start session, generate card automatically |
+| `POST` | `/api/v1/games/bingo/draw` | Yes | Machine draws one number |
+| `GET` | `/api/v1/games/bingo/current` | Yes | Get current session state |
+| `POST` | `/api/v1/games/bingo/claim` | Yes | Player claims Bingo |
+| `GET` | `/api/v1/games/bingo/history` | Yes | Paginated session history |
+
+**POST /bingo/start — Request body:**
+```json
+{
+  "betAmount": 100
+}
+```
+
+**POST /bingo/start — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "card": [5, 12, 23, 44, 61, 3, 18, 29, 47, 72, 1, 20, 35, 50, 68, 8, 25, 40, 55, 75, 11, 30, 42, 60, 70],
+  "drawnNumbers": [],
+  "status": "IN_PROGRESS"
+}
+```
+
+**POST /bingo/draw — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "drawnNumber": 23,
+  "drawnNumbers": [7, 44, 23],
+  "status": "IN_PROGRESS"
+}
+```
+
+**POST /bingo/claim — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "valid": true,
+  "result": "WIN",
+  "payout": 500,
+  "status": "FINISHED"
+}
+```
+
+---
+
+### Horse Racing
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/api/v1/games/horses` | Yes | List available horses with odds |
+| `POST` | `/api/v1/games/horses/race` | Yes | Place bets and run race |
+| `GET` | `/api/v1/games/horses/history` | Yes | Paginated session history |
+
+**GET /horses — Response:**
+```json
+[
+  { "id": "uuid", "name": "Thunder", "odds": 2.5 },
+  { "id": "uuid", "name": "Shadow", "odds": 4.0 },
+  { "id": "uuid", "name": "Storm", "odds": 6.5 }
+]
+```
+
+**POST /horses/race — Request body:**
+```json
+{
+  "bets": [
+    { "horseId": "uuid", "betType": "WIN", "amount": 200 },
+    { "horseId": "uuid", "betType": "SHOW", "amount": 100 }
+  ]
+}
+```
+
+**POST /horses/race — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "firstPlace": { "id": "uuid", "name": "Thunder" },
+  "secondPlace": { "id": "uuid", "name": "Storm" },
+  "thirdPlace": { "id": "uuid", "name": "Shadow" },
+  "result": "WIN",
+  "payout": 500,
+  "status": "FINISHED"
+}
+```
+
+---
+
+### Poker
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/api/v1/games/poker/start` | Yes | Start session, deal hole cards |
+| `POST` | `/api/v1/games/poker/bet` | Yes | Player places a bet |
+| `POST` | `/api/v1/games/poker/check` | Yes | Player checks (no bet) |
+| `POST` | `/api/v1/games/poker/fold` | Yes | Player folds |
+| `POST` | `/api/v1/games/poker/flop` | Yes | Reveal first 3 community cards |
+| `POST` | `/api/v1/games/poker/turn` | Yes | Reveal 4th community card |
+| `POST` | `/api/v1/games/poker/river` | Yes | Reveal 5th card, resolve hand |
+| `GET` | `/api/v1/games/poker/history` | Yes | Paginated session history |
+
+**POST /poker/start — Request body:**
+```json
+{
+  "betAmount": 100
+}
+```
+
+**POST /poker/start — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "playerCards": ["AS", "KH"],
+  "dealerCards": ["?", "?"],
+  "communityCards": [],
+  "totalPot": 200,
+  "status": "IN_PROGRESS"
+}
+```
+
+**POST /poker/river — Response:**
+```json
+{
+  "sessionId": "uuid",
+  "playerCards": ["AS", "KH"],
+  "dealerCards": ["7D", "9C"],
+  "communityCards": ["QS", "JH", "10D", "2C", "5H"],
+  "playerHandRank": "STRAIGHT",
+  "dealerHandRank": "PAIR",
+  "totalPot": 400,
+  "result": "WIN",
+  "payout": 400,
+  "status": "FINISHED"
+}
+```
+
+---
+
+## HTTP Status codes
+
+| Code | Meaning | When |
+|------|---------|------|
+| `200` | OK | Successful GET or action |
+| `201` | Created | Successful POST that creates a resource |
+| `400` | Bad Request | Invalid input or validation error |
+| `401` | Unauthorized | Missing or invalid JWT token |
+| `403` | Forbidden | Valid token but insufficient permissions |
+| `404` | Not Found | Resource does not exist |
+| `409` | Conflict | Duplicate resource (e.g. email already registered) |
+| `422` | Unprocessable Entity | Business logic error (e.g. insufficient balance) |
+| `500` | Internal Server Error | Unexpected server error |
+
+---
+
+## Pagination
+
+All endpoints returning lists support pagination via query parameters:
+
+```
+GET /api/v1/wallet/transactions?page=0&size=20&sort=createdAt,desc
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | `0` | Page number (zero-indexed) |
+| `size` | `20` | Items per page |
+| `sort` | `createdAt,desc` | Sort field and direction |
