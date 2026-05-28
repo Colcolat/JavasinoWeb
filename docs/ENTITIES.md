@@ -73,6 +73,7 @@ Shared session entity used by Blackjack. Stores the high-level result of any gam
 | `game_type` | Enum | Which game was played |
 | `bet_amount` | Long | How much was wagered |
 | `result` | Enum | `WIN`, `LOSS`, `DRAW` |
+| `status` | Enum | `IN_PROGRESS`, `FINISHED` |
 | `created_at` | Timestamp | When the session occurred |
 
 ---
@@ -130,6 +131,7 @@ Stores one Bingo game (player vs machine).
 | `drawn_numbers` | String | Numbers revealed during the game (serialized) |
 | `bet_amount` | Long | Entry wager |
 | `result` | Enum | `WIN`, `LOSS` |
+| `status` | Enum | `IN_PROGRESS`, `FINISHED` |
 | `payout` | Long | Credits won or lost |
 | `created_at` | Timestamp | |
 
@@ -200,6 +202,7 @@ Stores one Texas Hold'em hand (player vs dealer).
 | `initial_bet` | Long | Opening wager |
 | `total_pot` | Long | Total accumulated across betting rounds |
 | `result` | Enum | `WIN`, `LOSS`, `FOLD` |
+| `status` | Enum | `IN_PROGRESS`, `FINISHED` |
 | `payout` | Long | |
 | `created_at` | Timestamp | |
 
