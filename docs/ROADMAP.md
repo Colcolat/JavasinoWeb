@@ -16,7 +16,7 @@ This document outlines the planned phases of the JavasinoWeb project, from initi
 - [x] Create `/docs` structure with Markdown documentation
 - [x] Define entity diagram (User, Wallet, Game, Transaction, etc.)
 - [x] Define REST API contract (endpoints per module)
-- [ ] Define game logic rules for each game
+- [x] Define game logic rules for each game
 
 ---
 
