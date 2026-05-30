@@ -1,0 +1,283 @@
+# Game Rules & Logic
+
+This document defines the rules, mechanics, and logic for every game in JavasinoWeb. It serves as the reference for backend implementation.
+
+---
+
+## Blackjack
+
+### Card values
+| Card | Value |
+|------|-------|
+| 2 – 10 | Face value |
+| J, Q, K | 10 |
+| Ace (A) | 1 or 11 — whichever benefits the player most |
+
+### Ace logic
+The Ace is worth 11 unless it causes the hand to exceed 21, in which case it automatically counts as 1.
+
+**Examples:**
+- `A + 7` = 18 (Ace = 11)
+- `A + 7 + 9` = 17 (Ace = 1)
+
+---
+
+### Game flow
+1. Player places a bet (`/start`)
+2. Player receives 2 cards, dealer receives 2 cards — **one dealer card remains hidden**
+3. Player chooses an action:
+   - **Hit** — request another card
+   - **Stand** — end turn, dealer plays
+   - **Double** — double the bet, receive exactly one more card, turn ends
+4. If player reaches 22+ → **Bust**, player loses immediately without dealer playing
+5. If player stands → dealer reveals hidden card and draws until reaching **17 or more**
+6. Scores are compared and result is determined
+
+---
+
+### Win conditions
+| Situation | Result |
+|-----------|--------|
+| Player gets 21 with first 2 cards (A + 10/face) | **Blackjack** — pays 3:2 |
+| Player score > 21 | **Bust** — player loses |
+| Dealer score > 21 | **Dealer Bust** — player wins |
+| Player score > Dealer score | **Win** |
+| Dealer score > Player score | **Loss** |
+| Player score == Dealer score | **Push** — bet returned |
+
+---
+
+### Payouts
+| Result | Payout |
+|--------|--------|
+| Win | 2x bet |
+| Blackjack | 2.5x bet |
+| Push | 1x bet (returned) |
+| Loss / Bust | 0x (bet lost) |
+
+---
+
+## Roulette
+
+> **European Roulette** (single 0) — better player odds than American (double 00).
+
+### The board
+37 spaces: numbers 0–36. 0 is green; remaining numbers alternate red and black.
+
+---
+
+### Bet types & payouts
+| Type | Example | Probability | Payout |
+|------|---------|-------------|--------|
+| **Exact Number** | "17" | 1/37 | 35x |
+| **Color** | "RED" / "BLACK" | 18/37 | 2x |
+| **Even / Odd** | "EVEN" / "ODD" | 18/37 | 2x |
+| **Dozen** | "1-12", "13-24", "25-36" | 12/37 | 3x |
+| **Half** | "LOW" (1–18) / "HIGH" (19–36) | 18/37 | 2x |
+
+### Zero rule
+If 0 lands:
+- Only exact bets on 0 win
+- All other bet types (color, even/odd, dozen, half) lose
+
+---
+
+### Game flow
+1. Player places one or more bets (`/spin`)
+2. Server generates a random number from 0 to 36
+3. Each bet is evaluated against the winning number
+4. Net winnings/losses are calculated
+5. Wallet is updated with the net result
+
+---
+
+### Multi-bet example
+Player bets:
+- 100 credits on RED
+- 50 credits on number 17
+
+Result: **17** (red)
+- Color bet: WIN → +200 credits
+- Number bet: WIN → +1,750 credits
+- **Net gain: +1,950 credits**
+
+---
+
+## Bingo
+
+### The card
+A standard 5x5 grid of 25 numbers with a **FREE** center space (pre-marked from the start).
+
+Each column draws from a specific range:
+
+| Column | Range |
+|--------|-------|
+| B | 1 – 15 |
+| I | 16 – 30 |
+| N | 31 – 45 |
+| G | 46 – 60 |
+| O | 61 – 75 |
+
+---
+
+### Win conditions
+Player wins by completing any of the following patterns:
+
+| Pattern | Description |
+|---------|-------------|
+| **Horizontal row** | 5 numbers in a horizontal line |
+| **Vertical row** | 5 numbers in a vertical line |
+| **Diagonal** | 5 numbers in a diagonal line |
+
+> The FREE center space counts toward any pattern that crosses it.
+
+---
+
+### Game flow
+1. Player places a bet and starts the game (`/start`)
+2. Server generates a random 5x5 card respecting column ranges
+3. Center space is automatically marked as FREE
+4. Player requests a number (`/draw`) — machine draws a random number from 1–75 without repeating
+5. If the number is on the player's card, it is automatically marked
+6. Player repeats `/draw` until a pattern is complete
+7. Player calls `/claim` when they believe they have Bingo
+8. Server validates the claim:
+   - **Valid** → WIN, payout applied
+   - **Invalid** → LOSS, bet is lost (false claim penalty)
+
+---
+
+### Implementation note
+The card is modeled as an `int[5][5]` matrix in memory during the session and serialized as a String for database storage. Pattern validation iterates rows, columns, and diagonals — pure array logic with no JPA involvement.
+
+---
+
+### Payouts
+| Result | Payout |
+|--------|--------|
+| Win | 5x bet |
+| False claim | 0x (bet lost) |
+
+---
+
+## Horse Racing
+
+### Horse attributes
+Each horse has base attributes stored in the database:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `name` | String | Horse name |
+| `baseSpeed` | Float | Base speed value (1.0 – 10.0) |
+| `odds` | Float | Derived from baseSpeed — faster horses pay less |
+
+---
+
+### Weather conditions
+Generated randomly at the start of each race. Affects each horse's speed with an individual modifier:
+
+| Weather | Effect |
+|---------|--------|
+|  Sunny | No modifier — base speed |
+|  Rain | -10% to -20% speed (random per horse) |
+|  Wind | +5% to -15% speed (random per horse) |
+|  Storm | -20% to -40% speed (random per horse) |
+
+Weather introduces real uncertainty — a favored horse can lose under adverse conditions.
+
+---
+
+### Race simulation
+The race is simulated internally in rounds (not directly visible to the player):
+
+1. Each round, every horse's speed varies slightly (`baseSpeed ± random(0.5)`)
+2. Distance traveled is accumulated per horse
+3. First horse to reach the total distance wins
+4. Top 3 finishing positions are recorded
+
+---
+
+### Bet types & payouts
+| Type | Description | Payout |
+|------|-------------|--------|
+| **WIN** | Horse finishes 1st | `odds` × bet |
+| **PLACE** | Horse finishes 1st or 2nd | (`odds` / 2) × bet |
+| **SHOW** | Horse finishes 1st, 2nd, or 3rd | (`odds` / 3) × bet |
+
+---
+
+### Game flow
+1. Player retrieves available horses with odds (`/horses`)
+2. Server generates weather conditions for the race
+3. Player places one or more bets (`/race`)
+4. Server simulates the race internally
+5. Top 3 positions are determined
+6. Bets are evaluated and wallet is updated
+
+---
+
+## Poker (Texas Hold'em — Player vs Dealer)
+
+### Game stages
+| Stage | Description | Community Cards |
+|-------|-------------|-----------------|
+| **Pre-flop** | 2 private cards dealt to each, first betting round | 0 |
+| **Flop** | 3 community cards revealed, second betting round | 3 |
+| **Turn** | 1 more card revealed, third betting round | 4 |
+| **River** | Final card revealed, last betting round | 5 |
+| **Showdown** | Hands compared, best hand wins | 5 |
+
+---
+
+### Player actions per round
+| Action | Description |
+|--------|-------------|
+| **Bet** | Add credits to the pot |
+| **Check** | Pass without betting (only if no one has bet yet) |
+| **Fold** | Forfeit — lose all credits bet so far |
+
+**Dealer strategy:** The dealer (machine) bets if holding ONE PAIR or better; otherwise checks.
+
+---
+
+### Hand rankings (lowest to highest)
+| Rank | Hand | Example |
+|------|------|---------|
+| 1 | **High Card** | Highest card in hand |
+| 2 | **One Pair** | Two cards of the same value |
+| 3 | **Two Pair** | Two different pairs |
+| 4 | **Three of a Kind** | Three cards of the same value |
+| 5 | **Straight** | 5 consecutive cards |
+| 6 | **Flush** | 5 cards of the same suit |
+| 7 | **Full House** | Three of a Kind + Pair |
+| 8 | **Four of a Kind** | Four cards of the same value |
+| 9 | **Straight Flush** | Straight of the same suit |
+| 10 | **Royal Flush** | A, K, Q, J, 10 of the same suit |
+
+---
+
+### Final hand formation
+Each player uses the **best 5-card combination** from their 2 private cards and the 5 community cards (7 cards total).
+
+> **Implementation note:** This requires evaluating all possible combinations of 5 from 7 cards — the most complex algorithm in the project. Planned for the final phase.
+
+---
+
+### Game flow
+1. Player places initial bet (`/start`) — deducted from wallet immediately
+2. 2 private cards dealt to player and dealer (dealer cards hidden)
+3. **Pre-flop** → player bets, checks, or folds
+4. **Flop** (`/flop`) → 3 community cards revealed → player bets, checks, or folds
+5. **Turn** (`/turn`) → 1 card revealed → player bets, checks, or folds
+6. **River** (`/river`) → final card revealed → player bets, checks, or folds
+7. **Showdown** → dealer cards revealed, both hands evaluated, best hand wins
+
+---
+
+### Payouts
+| Result | Payout |
+|--------|--------|
+| Win | Entire pot |
+| Loss | Loses all credits bet |
+| Fold | Loses credits bet up to that point |
+| Tie | Pot is split evenly |
